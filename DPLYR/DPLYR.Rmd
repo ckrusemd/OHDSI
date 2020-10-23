@@ -1,0 +1,511 @@
+---
+title: "DPLYR 1.0"
+author: "Christian Kruse"
+date: "10/23/2020"
+output: html_document
+---
+
+```{r setup }
+
+# install.packages("remotes")
+# remotes::install_github("ThinkR-open/fakir")
+
+library(dplyr)
+library(fakir)
+library(broom)
+sessionInfo()
+
+```
+
+
+
+```{r }
+
+df.fake_tickets <- fakir::fake_ticket_client(n = 50,vol = 50)
+df.fake_tickets_2 <- fakir::fake_ticket_client(n = 50,vol = 50)
+df.fake_clients <- fakir::fake_base_clients(n = 100)
+
+
+```
+
+
+### One table verbs
+
+```{r}
+## Arrange 
+
+df.fake_tickets %>% 
+  arrange(num_client)
+
+df.fake_tickets %>% 
+  arrange(desc(num_client))
+
+```
+## Count
+
+```{r}
+
+# Count
+df.fake_tickets %>% count() # roughly equivalent to df %>% group_by(a, b) %>% summarise(n = n()).
+
+# Tally
+df.fake_tickets %>% tally(name = "new_count") # equivalent to df %>% summarise(n = n()).
+
+# Add Count
+df.fake_tickets %>% add_count(name = "new_count") # add new_count / n column
+
+# Add Tally
+df.fake_tickets %>% add_tally(name = "new_count")
+
+
+```
+
+
+```{r}
+
+# Distinct
+df.fake_tickets %>% distinct()
+
+# Filter
+df.fake_tickets %>% filter(num_client>5)
+
+# Mutate - Adds new variables
+df.fake_tickets %>% dplyr::mutate(Hello=paste0(first," ",last)) %>% dplyr::select(Hello)
+
+# Transmutate - Replace all existing variables
+df.fake_tickets %>% dplyr::transmute(Hello=paste0(first," ",last)) 
+
+# Pull to vector..
+df.fake_tickets %>% dplyr::pull(ref)
+
+# Relocate
+df.fake_tickets %>% dplyr::relocate(last,.before=first) # last before first
+df.fake_tickets %>% dplyr::relocate(first) # first... first
+df.fake_tickets %>% dplyr::relocate(first,last,.before=ref) # first AND last before ref
+
+# Rename
+df.fake_tickets %>% dplyr::rename(first_name=first)
+
+# Rename with
+df.fake_tickets %>% dplyr::rename_with(.fn = toupper,.cols = c(first,last))
+df.fake_tickets %>% dplyr::rename_with(.fn = toupper,.cols = everything())
+df.fake_tickets %>% dplyr::rename_with(.fn = toupper,.cols = contains("first"))
+```
+## SELECT
+
+```{r}
+
+### SELECT
+
+df.fake_tickets %>% dplyr::select(first:last) # include only close
+df.fake_tickets %>% dplyr::select(!c(first,last)) # the complement to this
+df.fake_tickets %>% dplyr::select(everything())
+df.fake_tickets %>% dplyr::select(last_col())
+df.fake_tickets %>% dplyr::select(starts_with("f"))
+df.fake_tickets %>% dplyr::select(ends_with("f"))
+df.fake_tickets %>% dplyr::select(contains("e"))
+df.fake_tickets %>% dplyr::select(matches("e"))
+# select(num_range("wk", 10:15)) #wk10,wk11,wk12...
+df.fake_tickets %>% dplyr::select(all_of(c("first","name"))) # string-based, error if not found
+df.fake_tickets %>% dplyr::select(any_of(c("first","name"))) # string-based, NO error if not found
+df.fake_tickets %>% dplyr::select(where(is.character)) # string-based, NO error if not found
+
+```
+```{r}
+
+### SUMMARISE
+df.fake_tickets %>% 
+  summarise(median_age=median(age,na.rm=T),
+            IQR=IQR(age,na.rm=T),
+            count=n(),
+            count_distinct=n_distinct(age), # number of distinct values
+            above_20=any(age>20) # true/falls for logical condition
+            )
+
+```
+
+
+
+```{r}
+
+# Slice
+
+df.fake_tickets %>% slice(c(1,4,7))
+df.fake_tickets %>% slice_head(n = 5)
+df.fake_tickets %>% slice_tail(n = 5)
+df.fake_tickets %>% slice_min(order_by = age,n = 5)
+df.fake_tickets %>% slice_max(order_by = age,n = 5)
+df.fake_tickets %>% slice_sample(n = 5)
+
+
+```
+
+
+```{r}
+
+### Bind Rows
+df.fake_tickets
+df.fake_tickets_2
+
+bind_rows(df.fake_tickets,df.fake_tickets_2)
+
+
+### Bind Cols
+df.fake_tickets %>% 
+  bind_cols(df.fake_tickets %>% transmute(long_name=paste0(first," ",last))) %>% 
+  dplyr::select(last_col())
+
+
+```
+
+
+```{r}
+
+### JOINS
+
+block_1 <- df.fake_tickets %>% dplyr::select(num_client,first,last)
+block_2 <- df.fake_clients %>% dplyr::select(num_client,first,job)
+
+# Inner join
+inner_join(block_1,block_2)
+
+# Left join
+left_join(block_1,block_2)
+
+# Right join
+right_join(block_1,block_2)
+
+# Full join
+full_join(block_1,block_2)
+
+# Nest Join
+nest_join(block_1,block_2) # block 2 containing job as tibble
+
+# Semi Join
+semi_join(block_1,block_2)
+
+# Anti Join
+anti_join(block_1,block_2)
+
+
+```
+
+```{r}
+
+### GROUP BY
+df.fake_tickets %>% 
+  group_by(job) %>% 
+  summarise(median_age=median(age,na.rm=T),
+            IQR=IQR(age,na.rm=T),
+            count=n(),
+            count_distinct=n_distinct(age), # number of distinct values
+            above_20=any(age>20) # true/falls for logical condition
+            )
+
+# UNGROUP
+df.fake_tickets %>% 
+  group_by(job) %>% 
+  summarise(median_age=median(age,na.rm=T),
+            IQR=IQR(age,na.rm=T),
+            count=n(),
+            count_distinct=n_distinct(age), # number of distinct values
+            above_20=any(age>20) # true/falls for logical condition
+            ) %>% 
+  ungroup()
+
+### GROUP_COLS
+df.fake_tickets %>% 
+  group_by(job) %>% 
+  dplyr::select(group_cols())
+
+### ROW RISE
+df.fake_tickets %>% 
+  rowwise() %>% 
+  dplyr::mutate(sum_=(fidelity_points+month)/3) %>% 
+  dplyr::select(last_col())
+
+
+
+```
+
+
+
+### VECTOR FUNCTIONS
+
+```{r}
+
+## ACROSS
+
+df.fake_clients %>% 
+  group_by(job) %>% 
+  summarise(across(.cols=contains("fid"),
+                   .fns = c(mean,max)))
+
+df.fake_clients %>% 
+  group_by(job) %>% 
+  summarise(across(.cols=is.numeric,
+                   .fns = c(gennemsnit = mean, maximum = max)))
+
+## C_ACROSS - row wise
+
+df.fake_clients %>% 
+  rowwise() %>% 
+  dplyr::mutate(
+    gennemsnit=median(c_across(is.numeric))
+  )
+
+### BETWEEN
+df.fake_clients %>% 
+  dplyr::mutate(age_range=between(age,20,40)) %>% 
+  dplyr::select(last_col())
+
+### CASE_WHEN
+df.fake_clients %>% 
+  dplyr::mutate(age_range=case_when(age<20 ~ "Under 20",
+                                    between(age,20,30) ~ "20-30",
+                                    between(age,30,40) ~ "30-40",
+                                    between(age,40,50) ~ "40-50",
+                                    TRUE ~ "Other")) %>% 
+  dplyr::select(last_col())
+
+
+### COALESCE
+df.fake_clients %>% 
+  dplyr::mutate(first_age=coalesce(age,0)) %>%  # inputs 0 to age
+  dplyr::select(age,last_col())
+
+
+```
+
+
+
+```{r}
+
+## CUMULATIVE FUNCTIONS.. cumulative mean e.g. 20 24 -> 22.... 20 24 26 >- 23.3
+
+df.fake_clients %>% 
+  slice_sample(n = 10) %>% 
+  dplyr::select(age) %>% 
+  na.omit() %>% 
+  dplyr::mutate(cummean_=cummean(age),
+                cumsum_=cumsum(age),
+                cummax_=cummax(age),
+                cumany_=cumany(age>20),
+                cumall_=cumall(age>20))
+
+## FILTER CUMULATIVE... i.e. all the rows after the first over 35
+
+df.fake_clients %>% 
+  slice_sample(n = 10) %>% 
+  dplyr::select(age) %>% 
+  na.omit() %>% 
+  filter(cumany(age>20))
+
+```
+
+
+
+
+
+```{r}
+
+# if_else
+df.fake_clients %>% 
+  dplyr::mutate(age_gap=if_else(condition = age<30,
+                                true = 1,
+                                false = 0,
+                                missing = 99)) %>%  # Faster than base ifelse, stricter
+  dplyr::select(last_col())
+
+
+df.fake_clients %>% 
+  dplyr::mutate(age_gap=if_else(condition = age<30,
+                                true = 1,
+                                false = 0,
+                                # false = "nej",  # Would fail
+                                missing = 99)) %>%  # Faster than base ifelse, stricter
+  dplyr::select(last_col())
+
+```
+
+
+
+```{r}
+
+df.fake_clients %>% 
+  dplyr::mutate(lag_=lag(age),
+                lead_=lead(age)) %>% 
+  dplyr::select(age,lag_,lead_)
+
+```
+
+```{r}
+
+# Cur functions
+
+# df.fake_clients %>% 
+#   group_by(region) %>% 
+#   dplyr::mutate(cur_group_rows=cur_group_rows()) %>% 
+#   dplyr::select(region,
+#                 # cur_group_id=cur_group_id(),
+#                 cur_group_rows)
+  
+  
+```
+```{r}
+
+### NEAR
+
+near(sqrt(2) ^ 2, 2)
+
+### VECTOR
+num_vector <- c(1:10)
+
+nth(x = num_vector,n = 2)
+first(x = num_vector)
+last(num_vector)
+
+### RANKED FUNCTIONS
+
+# Row number
+df.fake_clients %>% 
+  dplyr::mutate( row_number=row_number() ) %>% 
+  dplyr::select(last_col())
+
+# Percentile
+df.fake_clients %>% 
+  dplyr::mutate( row_number=ntile(x = age,n = 100) ) %>% ## ntile.. i.e. 100 percentile
+  dplyr::select(age,last_col())
+
+# Min rank
+df.fake_clients %>% 
+  dplyr::mutate( row_number=min_rank(age) ) %>% ## min_rank i.e. 100 percentile
+  dplyr::select(age,last_col())
+
+# Dense rank
+df.fake_clients %>% 
+  dplyr::mutate( row_number=dense_rank(age) ) %>% ## dense_rank i.e. 100 percentile
+  dplyr::select(age,last_col())
+
+# Percent rank
+df.fake_clients %>% 
+  dplyr::mutate( row_number=percent_rank(age) ) %>% ## percent_rank i.e. 0-1centile
+  dplyr::select(age,last_col())
+
+# Cumulative distribution
+df.fake_clients %>% 
+  dplyr::mutate( row_number=cume_dist(age) ) %>% ## percent_rank i.e. 0-1centile
+  dplyr::select(age,last_col()) %>% 
+  arrange(row_number)
+
+
+
+
+
+
+
+```
+
+### RECODE
+
+```{r}
+
+## RECODE
+df.fake_clients %>% 
+  dplyr::select(priority) %>% 
+  dplyr::mutate(priority_recoded=recode(priority,"Bronze"=3,"Silver"=2,"Gold"=1,"Platinium"=0))
+
+## RECODE FACTOR
+
+df.fake_clients %>% 
+  dplyr::select(priority) %>% 
+  dplyr::mutate(priority_recoded=recode_factor(priority,"Bronze"=3,
+                                               "Silver"=2,
+                                               "Gold"=1,
+                                               "Platinium"=0)) # same, but factor
+
+```
+
+### Remote tables
+
+
+### EXPERIMENTAL GROUP FUNCTIONS
+
+```{r}
+
+### GROUP MAP - Returns list
+group_map <- df.fake_clients %>% 
+  group_by(region) %>% 
+  group_map(~ broom::tidy(lm(data = .,formula = "num_client ~ age"))) 
+class(group_map) # list of lms
+group_map
+
+### GROUP MODIFY - Returns data frame
+group_modify<- df.fake_clients %>% 
+  group_by(region) %>% 
+  group_modify(~ broom::tidy(lm(data = .,formula = "num_client ~ age"))) 
+class(group_modify) # list of lms
+group_modify
+
+### GROUP WALK: side effect!
+df.fake_clients %>%
+  group_by(region) %>%
+  group_walk(~ print(nrow(.))) # could be CSV files, plots etc
+
+### GROUP TRIM
+df.fake_clients %>%
+  group_by(region) %>%
+  group_trim()
+
+
+### GROUP SPLIT - split to dataframe by region
+df.fake_clients %>%
+  group_by(region) %>%
+  group_split()
+
+### WITH_GROUS
+df.fake_clients %>%
+  with_groups(region,mutate,age_mean=mean(age))
+
+```
+
+
+
+```{r}
+
+### GROUP MODIFY - needs to become a 
+group_modify <- df.fake_clients %>% 
+  group_by(region) %>% 
+  group_modify(~ head(.,2))
+class(group_modify) # list of lms
+group_modify
+
+
+```
+
+
+
+
+```{r}
+
+### NEST BY
+df.fake_clients %>% 
+  nest_by(region)
+
+df.fake_clients %>% 
+  nest_by(region) %>% 
+  dplyr::mutate(mean_age=mean(data$age)) # access data and mean the age
+
+df.fake_clients %>% 
+  nest_by(region) %>% 
+  dplyr::mutate(lm_model=list(lm(data = data, formula = "age ~ fidelity_points")))
+
+# df.fake_clients %>% 
+#   nest_by(region) %>% 
+#   dplyr::mutate(lm_model=list(lm(data = data, formula = "age ~ fidelity_points"))) %>% 
+#   dplyr::mutate(broomed=broom::tidy(lm_model))
+
+
+```
+
+
