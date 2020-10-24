@@ -9,22 +9,415 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## DATA TABLE
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r}
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+library(data.table)
+library(fakir)
+sessionInfo()
 
-```{r cars}
-summary(cars)
 ```
 
-## Including Plots
+```{r}
 
-You can also embed plots, for example:
+dt.fake_tickets <- fakir::fake_ticket_client(n = 1000,vol = 1000)
+setDT(dt.fake_tickets)
 
-```{r pressure, echo=FALSE}
-plot(pressure)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+### BASIC OPERATIONS IN DATA TABLE
+
+```{r}
+
+# DT[i, j, by] - Base Data Table operations
+
+# i: where | order by
+# j: select | update 
+# by: by a variable
+
+dt.fake_tickets[age<40] # i
+dt.fake_tickets[age<40,.(first,last,age)] # i + j - variable selection by list or . (the same)
+dt.fake_tickets[age<40,.(first,last,age,mean_age=mean(age)),region] # i + j + by
+
+# Other selection methods
+dt.fake_tickets[age<40,c("first","last","age")] # by strings
+
+columns <- c("first","last","age") # by referencing character vector
+dt.fake_tickets[age<40,..columns] # the .. prefix should be reminiscent of the “up-one-level” command
+dt.fake_tickets[age<40,columns,with=F] # same as above
+
+# All columns except
+columns <- c("first","last","age") # by referencing character vector
+dt.fake_tickets[age<40,-..columns] # minus means everything both
+dt.fake_tickets[age<40,!..columns] # minus means everything both
+
+# Column spans selection
+dt.fake_tickets[age<40,first:last] # minus means everything both
+dt.fake_tickets[age<40,last:first] # minus means everything both
+
+```
+
+### ORDER
+
+```{r}
+
+dt.fake_tickets[order(age),.(first,last,age)] # i
+dt.fake_tickets[order(-age),.(first,last,age)] # i
+
+```
+
+### i + j
+
+```{r}
+
+### i + j
+dt.fake_tickets[,.(mean_age = mean(age,na.rm=T), max_age=max(age,na.rm=T))] # i - two variables
+dt.fake_tickets[between(age,20,40),.(mean_age = mean(age), max_age=max(age))] # i - subset
+dt.fake_tickets[,.(num_within_regions = length(age)),region] # i - subset
+
+# .N  - number within current group
+dt.fake_tickets[,.(num_in_current_group=.N)]
+dt.fake_tickets[,.(num_in_current_group=.N),.(region)]
+
+# .N  - mean with multiple group_bys
+dt.fake_tickets[,.(count=.N),.(region,job)]
+
+```
+
+### KEY BY
+```{r}
+
+# Key by
+dt.fake_tickets[,.(count=.N),by=.(region,job)] # not sorting by the keys during aggregation
+dt.fake_tickets[,.(count=.N),keyby=.(region,job)] # auto sorting + set key during aggregation
+
+```
+
+### CHAINING ARGUMENTS
+
+```{r}
+
+# Key by
+dt.fake_tickets[,.(count=.N),keyby=.(region,job)]
+dt.fake_tickets[,.(count=.N),keyby=.(region,job)][order(-count)]
+dt.fake_tickets[,.(count=.N),keyby=.(region,job)][order(-count)][count>5]
+dt.fake_tickets[,.(count=.N),keyby=.(region,job)][order(-count)][count>5][,.(mean_count=mean(count))]
+
+# Chain vertical!
+dt.fake_tickets[,.(count=.N),keyby=.(region,job)
+                ][order(-count)
+                  ][count>5
+                    ][,.(mean_count=mean(count))
+                      ]
+
+```
+
+### EXPRESSIONS IN BY
+
+```{r}
+
+dt.fake_tickets[,.(count=.N),keyby=.(region == "Lorraine", job_Engineer=grepl("Engineer",job))]
+
+
+```
+
+### MULTIPLE COLUMNS - j .SD
+
+```{r}
+
+# .SD. It stands for Subset of Data.
+
+# .SD contains all the columns except the grouping columns by default.
+# dt.fake_tickets[, print(.SD), by = region] # very long output
+
+identical(dt.fake_tickets.age,
+          dt.fake_tickets.age[,.SD])
+
+# To compute on (multiple) columns, we can then simply use the base R function lapply().
+dt.fake_tickets.age <- dt.fake_tickets[,.(age,region,fidelity_points)]
+dt.fake_tickets.age[, lapply(.SD, mean), by = region]
+
+# .SDcols
+# Using the argument .SDcols. It accepts either column names or column indices. F
+dt.fake_tickets[,
+                lapply(.SD, mean),
+                by = region,
+                .SDcols=c("age","fidelity_points")]
+
+# first two rows
+dt.fake_tickets[,
+                head(.SD,2), # using .SD as a marker for all columns
+                by = region,
+                .SDcols=c("age","fidelity_points")]
+
+# subset
+dt.fake_tickets.age[,
+                    .SD,
+                    .SDcols=c("age","region")]
+
+### .SD for data analysis
+dt.fake_tickets[,
+                lapply(.SD,is.character)]
+
+# Column transformation - all to character
+dt.fake_tickets[,
+                lapply(.SD,as.character)]
+
+# Column conversion - certain to factor
+dt.fake_tickets[,
+                lapply(.SD,factor),
+                .SDcols=c("region","job")]
+
+# Referenced by string
+columns <- c("region","job")
+dt.fake_tickets[,
+                (columns) := lapply(.SD,factor),
+                .SDcols = columns] # only affects to two columns, keep others
+dt.fake_tickets[,..columns]
+
+# LM'ing for groups
+dt.fake_tickets[!is.na(age),
+                .(model = list(lm(formula = "age~fidelity_points",data=.SD))),
+                by=region]
+
+# LM'ing for groups + retain data table , then predict
+dt.fake_tickets.lm <- dt.fake_tickets[!is.na(age),
+                .(model = list(lm(formula = "age~fidelity_points",data=.SD)),
+                  data = list(.SD)),
+                by=region
+                ]
+
+
+```
+### j
+
+```{r}
+
+# flexible use of j: concatenating variables to list!
+dt.fake_tickets[,
+                .(name=list(c(first,last))),
+                by=region]
+
+# flexible use of j: concatenating variables to list!
+dt.fake_tickets[,
+                .(name=print(c(first,last))),
+                by=region]
+dt.fake_tickets[,
+                .(name=print(list(c(first,last)))),
+                by=region]
+
+```
+
+
+### BENCHMARKING AND IMPROVEMENS
+
+```{r benchmarking}
+
+options(datatable.auto.index=TRUE)
+options(datatable.use.index=TRUE)
+
+setDTthreads(0)
+getDTthreads()
+
+```
+
+### KEYS
+
+```{r}
+
+### Think of a key as supercharged rownames.
+
+# One keys
+dt.fake_tickets
+setkey(dt.fake_tickets,job) 
+key(dt.fake_tickets)
+# setkeyc(dt.fake_tickets,"ref") # string version 
+dt.fake_tickets["Interpreter"]
+
+
+## Multiple keys
+setkey(dt.fake_tickets,region,job) 
+key(dt.fake_tickets)
+dt.fake_tickets[,.(region,job)] # automatically sorted
+dt.fake_tickets[.("Alsace","Artist")] # region alsace, job artist
+dt.fake_tickets[,.(region,job)] # automatically sorted
+
+## Key with j select
+dt.fake_tickets[.(unique(region),"Artist"),.(age)] # ALL regions, just artist job.. age variable
+dt.fake_tickets[.(unique(region),"Artist"),.(age)][order(age)]
+dt.fake_tickets[.(unique(region),"Artist"),.(age)][order(age)][,.(mean_age=mean(age,na.rm=T))]
+
+## Aggr with by 
+dt.fake_tickets[.(unique(region),"Artist"),.(mean_age=mean(age,na.rm=T)),keyby=region]
+
+```
+
+
+### MULT
+
+```{r}
+## Mult
+dt.fake_tickets[.(unique(region),"Artist"),head(.SD,2),keyby=region,mult="first"]
+dt.fake_tickets[.(unique(region),"Artist"),head(.SD,2),keyby=region,mult="last"]
+dt.fake_tickets[.(unique(region),"Artist"),head(.SD,2),keyby=region,mult="first", nomatch = NULL]
+dt.fake_tickets[.(unique(region),"Artist"),head(.SD,2),keyby=region,mult="last", nomatch = NULL]
+
+```
+
+### BINARY SEARCH vs VECTOR SEARCH
+
+```{r}
+dt.fake_tickets
+
+setkey(dt.fake_tickets,region,job)
+## vector
+system.time({
+  dt.fake_tickets[job=="Artist" & region=="Alsace"]
+})
+## binary search
+system.time({
+  dt.fake_tickets[.("Artist","Alsace")]
+})
+
+# binary is much faster
+```
+
+
+
+### ASSIGNING
+
+```{r}
+
+dt.fake_tickets_doubled <- dt.fake_tickets
+setkey(dt.fake_tickets_doubled,region,job,age)
+dt.fake_tickets_doubled[,age_doubled:=age*2][,.(age,age_doubled)]
+
+```
+
+
+### RE-ARRANGING DATA
+
+```{r}
+
+data(iris)
+iris
+setDT(iris)
+iris[,IRIS_ID:=.I]
+
+### MELT
+
+# No need to define variable-value, no need to define columns (technically)
+data.table::melt(iris,
+                 id.vars = c("IRIS_ID")) 
+
+# You can specify the id vars (that will be kept) and the vars to melt
+iris.melted <- data.table::melt(iris,
+                 id.vars = c("IRIS_ID","Species"),
+                 measure.vars = c("Sepal.Length","Sepal.Width","Petal.Length","Petal.Width")) # don't even 
+
+# ... you can also define the variable and value var names
+data.table::melt(iris,
+                 id.vars = c("IRIS_ID","Species"),
+                 measure.vars = c("Sepal.Length","Sepal.Width","Petal.Length","Petal.Width"),
+                 variable.name="Variabel",
+                 value.name="Value") # don't even 
+
+
+### DCAST
+
+# dcast uses formula interface. 
+# The variables on the _LHS_ of formula represents the id vars and _RHS_ the measure vars.
+# value.var denotes the column to be filled in with while casting to wide format.
+# dcast also tries to preserve attributes in result wherever possible.
+
+iris.spread <- dcast(iris.melted,IRIS_ID + Species ~ variable)
+
+iris
+iris.spread
+iris.melted
+
+### DCAST with aggregation at the same time
+
+dcast(iris.melted,
+      Species ~ variable,
+      fun.agg = function(x) mean(x), value.var = "value")
+
+dcast(iris.melted,
+      Species + IRIS_ID ~ variable,
+      fun.agg = function(x) mean(x), value.var = "value")
+
+### ENHANCED MELT
+# We pass a list of columns to measure.vars, where each element of the list contains the columns that should be combined together.
+col_a <- c("Sepal.Length","Petal.Length")
+col_b <- c("Sepal.Width","Petal.Width")
+melt(iris, measure = list(col_a,col_b), value.name = c("Length", "Width"),variable.name = "Variabel",id.vars = c("Species"))
+
+# melt(iris, measure = data.table::patterns("^Length","^Width"), value.name = c("Length", "Width"))
+
+
+
+```
+
+
+### SECONDARY INDICES
+
+```{r}
+# Secondary indices are similar to keys in data.table, except for two major differences:
+
+# It doesn’t physically reorder the entire data.table in RAM. Instead, it only computes the order for the set of columns provided and stores that order vector in an additional attribute called index.
+
+# There can be more than one secondary index for a data.table (as we will see below).
+
+# primary key
+setkey(df.fake_clients,region)
+df.fake_clients["Alsace"]
+df.fake_clients["Alsace",on="region", verbose = TRUE]
+key(df.fake_clients)
+indices(df.fake_clients)
+
+# secondary index
+setindex(df.fake_clients,region)
+df.fake_clients["Alsace"]
+df.fake_clients["Alsace",on="region", verbose = TRUE]
+key(df.fake_clients)
+indices(df.fake_clients)
+
+# Key
+key(df.fake_clients)
+# Index
+indices(df.fake_clients)
+
+# Subset on key
+df.fake_clients["Alsace"]
+df.fake_clients["Alsace",on="region", verbose = TRUE]
+
+df.fake_clients["Alsace"]
+df.fake_clients["Alsace",on="region", verbose = TRUE]
+
+# Allows for subsetting on several indices
+df.fake_clients[.("Alsace","Arts administrator"),on=c("region","job")]
+
+
+# Allows for subsetting on several indices and j-select
+df.fake_clients[.("Alsace","Arts administrator"),on=c("region","job"),
+                .(age)]
+
+# Aggregation using by
+df.fake_clients["Alsace",on="region",.(region,age),
+                mult="last"]
+df.fake_clients["Alsace",on="region",.(region,mean_age=mean(age,na.rm=T)),
+                nomatch=NULL]
+
+```
+
+
+
+
+
+
+
+
+
+
+
