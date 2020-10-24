@@ -1,0 +1,447 @@
+---
+title: "R Tidymodels"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Tidy models
+
+```{r}
+library(tidymodels)
+
+# Helper packagesf
+library(readr)       # for importing data
+library(broom.mixed) # for converting bayesian models to tidy tibbles
+library(rstanarm) # for converting bayesian models to tidy tibbles
+```
+
+```{r}
+
+# urchin data
+urchins <- read_csv("https://tidymodels.org/start/models/urchins.csv") %>% 
+  setNames(c("food_regime", "initial_volume", "width")) %>% 
+  mutate(food_regime = factor(food_regime, levels = c("Initial", "Low", "High")))
+urchins
+
+
+```
+
+# Inspect
+
+```{r}
+
+ggplot(urchins,
+       aes(x = initial_volume, 
+           y = width, 
+           group = food_regime, 
+           col = food_regime)) + 
+  geom_point() + 
+  geom_smooth(method = lm, se = FALSE) +
+  scale_color_viridis_d(option = "plasma", end = .7)+
+  theme_bw()
+
+
+```
+
+# Linear Models
+
+```{r}
+
+# Linear Reg
+linear_reg()
+
+# Linear Reg with Model
+linear_reg() %>% 
+  set_engine("lm")
+
+# Save model
+lm_mod <- linear_reg() %>% 
+  set_engine("lm")
+
+# Fit Model
+lm_fit <- lm_mod %>% 
+  fit(width ~ initial_volume * food_regime, data = urchins)
+
+# Broom tidy
+tidy(lm_fit)
+
+# Predict New
+new_points <- expand.grid(initial_volume = 20, 
+                          food_regime = c("Initial", "Low", "High"))
+new_points
+
+# Predict
+mean_pred <- predict(lm_fit, 
+                     new_data = new_points, 
+                     type = "conf_int")
+mean_pred
+
+```
+## Stan engine (Bayesian with prior)
+
+```{r}
+
+# Requires prior 
+prior_dist <- rstanarm::student_t(df = 1)
+
+# Save model
+lm_mod <- linear_reg() %>% 
+  set_engine("stan")
+
+# Fit Model
+lm_fit <- lm_mod %>% 
+  fit(width ~ initial_volume * food_regime, data = urchins)
+
+# Broom tidy
+tidy(lm_fit)
+
+# Predict New
+new_points <- expand.grid(initial_volume = 20, 
+                          food_regime = c("Initial", "Low", "High"))
+new_points
+
+# Predict
+mean_pred <- predict(lm_fit, 
+                     new_data = new_points, 
+                     type = "conf_int")
+mean_pred
+
+```
+
+
+# RECIPES
+
+```{r}
+
+library(nycflights13)    # for flight data
+library(skimr)           # for variable summaries
+
+
+flight_data <- flights %>% 
+  mutate(
+    arr_delay = ifelse(arr_delay >= 30, "late", "on_time"),
+    arr_delay = factor(arr_delay),
+    date = as.Date(time_hour)
+  ) %>% 
+  inner_join(weather, by = c("origin", "time_hour")) %>% 
+  select(dep_time, flight, origin, dest, air_time, distance, 
+         carrier, date, arr_delay, time_hour) %>% 
+  na.omit() %>% 
+  mutate_if(is.character, as.factor)
+
+## Data Split
+data_split <- initial_split(flight_data, prop = 3/4)
+train_data <- training(data_split)
+test_data  <- testing(data_split)
+
+## RECIPE
+flights_rec <-  recipe(arr_delay ~ ., data = train_data)  %>% 
+  update_role(flight, time_hour, new_role = "ID") %>%  # set those as ID - they are not outcome and predictors
+  step_date(date, features = c("dow", "month")) %>%               
+  step_holiday(date, holidays = timeDate::listHolidays("US")) %>% 
+  step_rm(date) %>% 
+  step_dummy(all_nominal(), -all_outcomes()) %>% 
+  step_zv(all_predictors())
+
+summary(flights_rec) # it should understand where outcomes and predictors are
+
+# Create a workflow
+flights_wflow <- 
+  workflow() %>% 
+  add_model(lr_mod) %>% 
+  add_recipe(flights_rec)
+
+# Fit
+flights_fit <- 
+  flights_wflow %>% 
+  fit(data = train_data)
+
+# Show model broomed
+flights_fit %>% 
+  pull_workflow_fit() %>% 
+  tidy()
+
+
+```
+
+# Predict
+
+```{r}
+
+predict(flights_fit, test_data)
+
+flights_pred <- 
+  predict(flights_fit, test_data, type = "prob") %>% 
+  bind_cols(test_data %>% select(arr_delay, time_hour, flight)) 
+flights_pred
+
+```
+
+## AUC
+
+```{r}
+
+flights_pred %>% 
+  roc_curve(truth = arr_delay, .pred_late) %>% 
+  autoplot()
+
+flights_pred %>% 
+  roc_auc(truth = arr_delay, .pred_late)
+
+
+```
+
+## Yardsticks
+
+```{r}
+
+library(modeldata)
+
+data(cells, package = "modeldata")
+
+# Split
+set.seed(123)
+cell_split <- initial_split(cells %>% select(-case), 
+                            strata = class)
+
+# Divide
+cell_train <- training(cell_split)
+cell_test  <- testing(cell_split)
+
+# Random Forest 
+rf_mod <- 
+  rand_forest(trees = 1000) %>% 
+  set_engine("ranger") %>% 
+  set_mode("classification")
+
+# Fit RF
+set.seed(234)
+rf_fit <- 
+  rf_mod %>% 
+  fit(class ~ ., data = cell_train)
+rf_fit
+
+
+```
+# Cross validation
+
+```{r}
+
+# create folds
+set.seed(345)
+folds <- vfold_cv(cell_train, v = 10)
+
+# workflow
+rf_wf <- 
+  workflow() %>%
+  add_model(rf_mod) %>%
+  add_formula(class ~ .)
+
+# fit resamples
+set.seed(456)
+rf_fit_rs <- 
+  rf_wf %>% 
+  fit_resamples(folds)
+
+# show cv metrics
+collect_metrics(rf_fit_rs)
+
+# testing data frame
+rf_testing_pred <- 
+  predict(rf_fit, cell_test) %>% 
+  bind_cols(predict(rf_fit, cell_test, type = "prob")) %>% 
+  bind_cols(cell_test %>% select(class))
+
+# evaluation
+rf_testing_pred %>%                   # test set predictions
+  roc_auc(truth = class, .pred_PS)
+
+```
+
+
+# Tuning Hyperparameters
+
+```{r}
+
+library(tidymodels)  # for the tune package, along with the rest of tidymodels
+library(modeldata)   # for the cells data
+library(vip)
+
+# split data in training and test
+set.seed(123)
+cell_split <- initial_split(cells %>% select(-case), 
+                            strata = class)
+cell_train <- training(cell_split)
+cell_test  <- testing(cell_split)
+
+# tuning
+tune_spec <- 
+  decision_tree(
+    cost_complexity = tune(),
+    tree_depth = tune()
+  ) %>% 
+  set_engine("rpart") %>% 
+  set_mode("classification")
+tune_spec
+ # Think of tune() here as a placeholder. After the tuning process, we will select a single numeric value for each of these hyperparameters. For now, we specify our parsnip model object and identify the hyperparameters we will tune().
+
+# tree grid for rpart
+tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(),
+                          levels = 5) # dials package
+tree_grid
+
+# cross validation
+cell_folds <- vfold_cv(cell_train)
+
+# tune process
+set.seed(345)
+
+tree_wf <- workflow() %>%
+  add_model(tune_spec) %>%
+  add_formula(class ~ .)
+
+tree_res <- 
+  tree_wf %>% 
+  tune_grid(
+    resamples = cell_folds,
+    grid = tree_grid
+    )
+tree_res
+
+tree_res %>% 
+  collect_metrics()
+
+# best hyperparameter
+tree_res %>%
+  show_best("roc_auc")
+
+best_tree <- tree_res %>%
+  select_best("roc_auc")
+best_tree
+
+# finalize workflow
+final_wf <- 
+  tree_wf %>% 
+  finalize_workflow(best_tree)
+
+final_wf
+
+
+# finalize model
+final_tree <- 
+  final_wf %>%
+  fit(data = cell_train) 
+
+final_tree
+
+# variable importance
+final_tree %>% 
+  pull_workflow_fit() %>% 
+  vip()
+
+# last fit
+final_fit <- 
+  final_wf %>%
+  last_fit(cell_split) 
+
+final_fit %>%
+  collect_metrics()
+
+final_fit %>%
+  collect_predictions() %>% 
+  roc_curve(class, .pred_PS) %>% 
+  autoplot()
+
+
+```
+
+
+
+
+# iris rf example
+
+```{r}
+
+# 1. Split
+# 2. Engine
+# 3. Recipe
+# 4. Folds
+# 5. Workflow
+# 6. Grid
+# 7. Best parameter
+# 8. Finalized Model
+# 9. Predicting test and evaluating
+# 10. VIP
+
+
+data(iris)
+iris
+
+# split
+split <- initial_split(iris,prop=.8)
+iris_training <- training(split)
+iris_test <- testing(split)
+
+# engine
+tune_spec <- 
+  rand_forest(
+    mtry = tune(),
+    trees = 1000,
+    min_n = tune()
+  ) %>% 
+  set_engine("ranger") %>% 
+  set_mode("classification")
+
+# recipe
+tree_rec <- recipe(Species ~ ., data = iris_training) 
+
+# folds
+set.seed(234)
+trees_folds <- vfold_cv(iris_training)
+
+# workflow
+tune_wf <- workflow() %>%
+  add_recipe(tree_rec) %>%
+  add_model(tune_spec)
+
+# grid
+doParallel::registerDoParallel()
+
+set.seed(345)
+tune_res <- tune_grid(
+  tune_wf,
+  resamples = trees_folds,
+  grid = 20
+)
+
+tune_res
+
+# metrics
+tune_res %>%
+  collect_metrics()
+
+best_auc <- select_best(tune_res, "roc_auc")
+
+final_rf <- finalize_model(
+  tune_spec,
+  best_auc
+)
+
+# test
+
+rf_testing_pred <- 
+  predict(rf_fit, cell_test) %>% 
+  bind_cols(predict(rf_fit, cell_test, type = "prob")) %>% 
+  bind_cols(cell_test %>% select(class))
+
+# evaluation
+rf_testing_pred %>%                   # test set predictions
+  roc_auc(truth = class, .pred_PS)
+
+
+
+```
+
+
