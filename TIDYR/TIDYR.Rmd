@@ -1,0 +1,252 @@
+---
+title: "TIDYR"
+output:
+  html_document:
+    df_print: paged
+---
+
+### TIDYR
+ 
+* Each variable forms a column.
+* Each observation forms a row.
+* Each type of observational unit forms a table.
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(broom)
+library(purrr)
+
+data(iris)
+iris
+```
+
+## PIVOT LONGER
+
+```{r}
+
+iris %>% 
+  dplyr::mutate(IRIS_ID=row_number()) %>% 
+  pivot_longer(Sepal.Length:Petal.Width) # automatically to 'name' and 'value'
+
+iris %>% 
+  dplyr::mutate(IRIS_ID=row_number()) %>% 
+  pivot_longer(Sepal.Length:Petal.Width,
+               names_to="variable",
+               values_to="values") # automatically to 'name' and 'value'
+
+```
+
+### PIVOT WIDER
+
+```{r}
+
+iris.long <- iris %>% 
+  dplyr::mutate(IRIS_ID=row_number()) %>% 
+  pivot_longer(Sepal.Length:Petal.Width) 
+
+iris.long %>% 
+  pivot_wider(id_cols=c("IRIS_ID","Species"))
+
+```
+
+### RECTANGLING
+
+```{r}
+
+df.rectangled <- iris %>% 
+  nest_by(Species) %>% 
+  dplyr::mutate(linear_model=list(lm("Sepal.Length~Sepal.Width",data=data))) %>% 
+  dplyr::mutate(new_prediction=list(predict.lm(linear_model,data)))
+
+### HOIST  - extract single pieces of information from the data list 
+df.rectangled %>% 
+  hoist(data,
+        "Sepal.Length", # Just the Sepal Length as it is
+        max_Sepal.Width=list(max("Sepal.Width"))) # The max Sepal Length
+
+### UNNEST 
+df.rectangled %>% 
+  unnest(new_prediction)
+
+### UNNEST WIDER - only takes one column
+
+df.rectangled %>% 
+  unnest_wider(data) # takes data and spreads it to columns with lists
+
+# UNNEST LONGER (AFTER WIDER) - only takes one column
+
+df.rectangled %>% 
+  unnest_wider(data) %>% 
+  unnest_longer(Sepal.Length)
+
+# UNNEST AUTO (AFTER WIDER) - only takes one column
+
+df.rectangled %>% 
+  unnest_auto(data) %>% # auto finds out it's meant to be wider
+  unnest_auto(Sepal.Length) # auto finds it's meant to be longer
+
+```
+
+### NEST AND UNNEST
+
+```{r}
+
+## Nested tibbbles
+
+nested_df_tibbled <- iris %>% 
+  nest_by(Species) %>% 
+  dplyr::mutate(data=list(tibble(data)))
+
+## Unnested tibbles
+
+nested_df_tibbled %>% 
+  unnest() # Automatically unnests
+
+## LM example
+nested_df_tibbled %>% 
+  dplyr::mutate(linear_model=list(lm("Sepal.Length~.",data=data))) %>% 
+  dplyr::mutate(broomed=list(broom::tidy(linear_model))) %>% 
+  unnest(broomed)
+
+## LM PREDICTION
+nested_df_tibbled %>% 
+  dplyr::mutate(linear_model=list(lm("Sepal.Length~.",data=data))) %>% 
+  dplyr::mutate(new_prediction=list(predict(linear_model,data)))
+
+
+
+```
+
+
+### SEPARATE and UNITE
+
+```{r}
+
+### SEPARATE
+iris %>% 
+  dplyr::mutate(IRIS_ID=row_number()) %>% 
+  pivot_longer(Sepal.Length:Petal.Width) %>% 
+  tidyr::separate(col=name,
+           into = c("Measurement_Type","Measurement_Attribute"),
+           sep="\\.")
+
+### UNITE
+iris %>% 
+  dplyr::mutate(IRIS_ID=row_number()) %>% 
+  pivot_longer(Sepal.Length:Petal.Width) %>% 
+  separate(col=name,
+           into = c("Measurement_Type","Measurement_Attribute"),
+           sep="\\.") %>% 
+  unite("Measurement",Measurement_Type,Measurement_Attribute,sep = ".")
+
+
+```
+
+
+### COMPLETE, FILL ETC
+
+```{r}
+
+iris_with_na <- apply(iris, 2, function(x) { x[sample( 1:150 , 50)] <- NA ; x } ) %>% 
+  as_tibble
+
+## COMPLETE
+iris_with_na %>% as_tibble()
+iris_with_na %>% as_tibble() %>% complete(Species,
+                                       nesting(Sepal.Width,Sepal.Length),
+                                       fill=list(Petal.Width=0))
+## DROP NA
+iris_with_na %>% drop_na()
+
+## EXPAND (cartesian)
+iris_with_na %>% expand(Species,Sepal.Width,Sepal.Length)
+
+## CROSSING
+iris_with_na %>% 
+  crossing(Compare=unique(iris_with_na$Species))
+
+## NESTING
+# NB! Only combinations that already exist
+iris_with_na %>% 
+  expand(nesting(Species,Petal.Length))
+
+## FILL with directions
+iris_with_na %>% fill(Species,.direction = "up")
+iris_with_na %>% fill(Species,.direction = "down")
+iris_with_na %>% fill(Species,.direction = "downup") # awesome!
+
+## FULL SEQ
+# iris_with_na %>% full_seq(Species)
+
+## REPLACE NA
+iris_with_na %>% replace_na(list(Species="Mangler",Petal.Width=0))
+
+```
+
+
+### UNCOUNT
+
+```{r}
+
+iris_with_na %>% 
+  count(Species) %>% 
+  uncount(.,n,.id="id")
+
+```
+
+
+### CHOP AND UNCHOP
+
+```{r}
+
+iris %>% 
+  chop(c(Sepal.Length,Sepal.Width))
+
+iris %>% 
+  chop(c(Sepal.Length,Sepal.Width)) %>% 
+  unchop(c(Sepal.Length,Sepal.Width))
+
+
+df.rectangled %>% 
+  unchop(c(data,new_prediction))  #!  Brilliant
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
