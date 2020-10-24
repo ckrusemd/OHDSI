@@ -1,0 +1,156 @@
+---
+title: "FORCATS"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r}
+
+library(forcats)
+library(ggplot2)
+library(dplyr)
+data(starwars)
+starwars
+```
+
+
+### fct_infreq
+### fct_inorder
+
+```{r}
+
+# base plot with no order
+ggplot(starwars, aes(x = hair_color)) + 
+  geom_bar() + 
+  coord_flip()
+
+# quickly show order: number of observations
+?fct_infreq
+fct_infreq(starwars$hair_color)
+ggplot(starwars, aes(x = fct_infreq(hair_color))) + 
+  geom_bar() + 
+  coord_flip()
+
+# quickly show order: in order of first
+?fct_inorder
+fct_inorder(starwars$hair_color)
+ggplot(starwars, aes(x = fct_inorder(hair_color))) + 
+  geom_bar() + 
+  coord_flip()
+
+```
+
+
+### fct_lump: n or prop
+
+```{r}
+### n
+starwars %>% 
+ mutate(skin_color = (fct_lump(fct_inorder(skin_color), n = 5))) %>% 
+ ggplot(.,aes(x=skin_color)) +
+ geom_bar() +
+ coord_flip()
+
+### prop
+starwars %>% 
+ mutate(skin_color = fct_lump(skin_color, prop = .01, other_level = "extra")) %>% 
+ count(skin_color,sort=T)
+
+### mean
+starwars %>%
+  mutate(skin_color = fct_lump(skin_color, n = 6)) %>%
+  group_by(skin_color) %>%
+  summarise(mean_mass = mean(mass, na.rm = TRUE))
+
+```
+
+### fct_reorder
+
+```{r}
+
+# When you wish to reorder by another variable
+starwars %>% 
+  mutate(eye_color = fct_reorder(eye_color, skin_color)) %>%
+  ggplot(aes(x = skin_color, y = eye_color)) + 
+  geom_col()
+```
+
+
+```{r}
+
+
+# When you wish to reorder by another variable
+starwars %>% 
+  dplyr::mutate(eye_color=fct_shuffle(eye_color)) %>% 
+  .[["eye_color"]] %>% 
+  levels
+
+# Relevel
+starwars %>% 
+  dplyr::mutate(eye_color=fct_relevel(eye_color,c("hazel","pink"))) %>%  # hazel, pink, everything...
+  .[["eye_color"]] %>% 
+  levels
+
+# Reverse order
+starwars %>% 
+  dplyr::mutate(eye_color=fct_rev(eye_color)) %>% 
+  .[["eye_color"]] %>% 
+  levels
+
+# Shift
+# starwars %>% 
+#   dplyr::mutate(eye_color=fct_shift(eye_color)) 
+
+# Factor anonymize - not owkring?
+# starwars %>% 
+  # dplyr::mutate(anonymous_=fct_anon(name)) 
+# starwars$name %>% fct_anon()
+
+# Collapse
+starwars %>% 
+  dplyr::mutate(anonynous=forcats::fct_collapse(name,
+                                                GoodGuys = c("Luke Skywalker","C-3PO","R2-D2")))
+
+# Lump
+starwars %>%   dplyr::mutate(lumped=forcats::fct_lump(skin_color,n=5))
+starwars %>%   dplyr::mutate(lumped=forcats::fct_lump_lowfreq(skin_color))
+starwars %>%   dplyr::mutate(lumped=forcats::fct_lump_prop(skin_color,prop = 0.01))
+starwars %>%   dplyr::mutate(lumped=forcats::fct_lump_min(skin_color,2))
+starwars %>%   dplyr::mutate(name=forcats::fct_expand(name,c("Anden fyr")))
+starwars %>%   dplyr::mutate(name=forcats::fct_drop(name))
+starwars %>%   dplyr::mutate(hair_color=forcats::fct_explicit_na(hair_color))
+list(factor("a"), factor("b"), factor(c("a", "b"))) %>% fct_unify()
+
+
+```
+
+
+## Concatenate
+
+```{r}
+fa <- factor("a")
+fb <- factor("b")
+fab <- factor(c("a", "b"))
+fct_c(fa, fb, fab)
+```
+
+## Cross
+
+```{r}
+
+# Combine two different things:
+fruit <- factor(c("apple", "kiwi", "apple", "apple"))
+colour <- factor(c("green", "green", "red", "green"))
+eaten <- c("yes", "no", "yes", "no")
+
+fct_cross(fruit, colour)
+fct_cross(fruit, colour, eaten)
+
+fct_cross(fruit, colour, keep_empty = TRUE)
+```
+
+
+
+
