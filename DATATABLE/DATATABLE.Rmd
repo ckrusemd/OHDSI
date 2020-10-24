@@ -411,6 +411,51 @@ df.fake_clients["Alsace",on="region",.(region,mean_age=mean(age,na.rm=T)),
 
 ```
 
+### JOINS
+
+```{r}
+
+### JOINS
+
+block_1 <- df.fake_tickets %>% dplyr::select(num_client,first,last)
+block_2 <- df.fake_clients %>% dplyr::select(num_client,job)
+
+# Set DT
+setDT(block_1)
+setDT(block_2)
+
+# Keys
+setkey(block_1,num_client)
+setkey(block_2,num_client)
+
+# Inner join
+block_1[block_2, nomatch=0] # No match = 0 means inner join, don't keep rows
+block_1[block_2, nomatch=NA] # No match = NA means left_join, keep rows
+
+# Left join
+merge(block_1,block_2, all.x=TRUE)
+identical(merge(block_1,block_2, all.x=TRUE),
+          block_1[block_2, nomatch=NA]) # not the same...
+
+# Right join
+block_1[block_2]
+merge(block_1,block_2, all.y=TRUE)
+
+# Full join
+merge(block_1,block_2, all=TRUE)
+
+# Outer Join
+merge(block_1,block_2, all=TRUE)[is.na(num_client)]
+
+# Cross/cartesian Join
+merge(block_1,block_2,all=T)[order(num_client,first)]
+
+
+# Anti Join
+anti_join(block_1,block_2)
+
+
+```
 
 
 
