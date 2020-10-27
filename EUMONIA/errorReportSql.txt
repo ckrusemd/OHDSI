@@ -1,0 +1,50 @@
+DBMS:
+sqlite
+
+Error:
+no such table: mainCOHORT_ATTRIBUTE
+
+SQL:
+SELECT * FROM mainCOHORT_ATTRIBUTE;
+
+R version:
+R version 4.0.3 (2020-10-10)
+
+Platform:
+x86_64-apple-darwin17.0
+
+Attached base packages:
+- stats
+- graphics
+- grDevices
+- utils
+- datasets
+- methods
+- base
+
+Other attached packages:
+- Eunomia (1.0.0)
+- DatabaseConnector (3.0.0)
+- vip (0.2.2)
+- nycflights13 (1.0.1)
+- skimr (2.1.2)
+- broom.mixed (0.2.6)
+- readr (1.4.0)
+- yardstick (0.0.7)
+- workflows (0.2.1)
+- tune (0.1.1)
+- tibble (3.0.4)
+- rsample (0.0.8)
+- recipes (0.1.14)
+- parsnip (0.1.3)
+- modeldata (0.1.0)
+- infer (0.5.3)
+- dials (0.0.9)
+- scales (1.1.1)
+- tidymodels (0.1.1)
+- ggplot2 (3.3.2)
+- forcats (0.5.0)
+- purrr (0.3.4)
+- broom (0.7.2)
+- dplyr (1.0.2)
+- tidyr (1.1.2)

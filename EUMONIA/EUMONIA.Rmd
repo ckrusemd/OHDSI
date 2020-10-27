@@ -1,0 +1,208 @@
+---
+title: "Eumonia"
+output: html_notebook
+---
+
+# Eumonia
+
+```{r}
+
+library(Eunomia)
+library(tidyverse)
+library(Eunomia)
+library(Eunomia)
+connectionDetails <- getEunomiaConnectionDetails()
+connection <- connect(connectionDetails)
+querySql(connection, "SELECT COUNT(*) FROM person;")
+
+```
+
+
+```{r}
+
+createCohorts(connectionDetails)
+
+getTableNames(connection,databaseSchema = 'main')
+
+```
+
+# Load Data
+
+```{r}
+
+
+df.CARE_SITE <- renderTranslateQuerySql(connection, "SELECT * FROM main.CARE_SITE;")
+
+df.CDM_SOURCE <- renderTranslateQuerySql(connection, "SELECT * FROM main.CDM_SOURCE;")
+
+df.COHORT <- renderTranslateQuerySql(connection, "SELECT * FROM main.COHORT;")
+df.COHORT_ATTRIBUTE <- renderTranslateQuerySql(connection, "SELECT * FROM main.COHORT_ATTRIBUTE;")
+
+df.CONCEPT <- renderTranslateQuerySql(connection, "SELECT * FROM main.CONCEPT;")
+df.CONCEPT_ANCESTOR <- renderTranslateQuerySql(connection, "SELECT * FROM main.CONCEPT_ANCESTOR;")
+df.CONCEPT_CLASS <- renderTranslateQuerySql(connection, "SELECT * FROM main.CONCEPT_CLASS;")
+df.CONCEPT_RELATIONSHIP <- renderTranslateQuerySql(connection, "SELECT * FROM main.CONCEPT_RELATIONSHIP;")
+df.CONCEPT_SYNONYM <- renderTranslateQuerySql(connection, "SELECT * FROM main.CONCEPT_SYNONYM;")
+
+df.CONDITION_ERA <- renderTranslateQuerySql(connection, "SELECT * FROM main.CONDITION_ERA;")
+df.CONDITION_OCCURRENCE <- renderTranslateQuerySql(connection, "SELECT * FROM main.CONDITION_OCCURRENCE;")
+
+df.COST <- renderTranslateQuerySql(connection, "SELECT * FROM main.COST;")
+
+df.DEATH <- renderTranslateQuerySql(connection, "SELECT * FROM main.DEATH;")
+
+df.DEVICE_EXPOSURE <- renderTranslateQuerySql(connection, "SELECT * FROM main.DEVICE_EXPOSURE;")
+
+df.DOMAIN <- renderTranslateQuerySql(connection, "SELECT * FROM main.DOMAIN;")
+
+df.DOSE_ERA <- renderTranslateQuerySql(connection, "SELECT * FROM main.DOSE_ERA;")
+
+df.DRUG_ERA <- renderTranslateQuerySql(connection, "SELECT * FROM main.DRUG_ERA;")
+
+df.DRUG_EXPOSURE <- renderTranslateQuerySql(connection, "SELECT * FROM main.DRUG_EXPOSURE;")
+df.DRUG_STRENGTH <- renderTranslateQuerySql(connection, "SELECT * FROM main.DRUG_STRENGTH;")
+
+df.FACT_RELATIONSHIP <- renderTranslateQuerySql(connection, "SELECT * FROM main.FACT_RELATIONSHIP;")
+
+df.LOCATION <- renderTranslateQuerySql(connection, "SELECT * FROM main.LOCATION;")
+
+df.MEASUREMENT <- renderTranslateQuerySql(connection, "SELECT * FROM main.MEASUREMENT;")
+
+df.METADATA <- renderTranslateQuerySql(connection, "SELECT * FROM main.METADATA;")
+
+df.NOTE <- renderTranslateQuerySql(connection, "SELECT * FROM main.NOTE;")
+df.NOTE_NLP <- renderTranslateQuerySql(connection, "SELECT * FROM main.NOTE_NLP;")
+
+df.OBSERVATION <- renderTranslateQuerySql(connection, "SELECT * FROM main.OBSERVATION;")
+df.OBSERVATION_PERIOD <- renderTranslateQuerySql(connection, "SELECT * FROM main.OBSERVATION_PERIOD;")
+
+df.PAYER_PLAN_PERIOD <- renderTranslateQuerySql(connection, "SELECT * FROM main.PAYER_PLAN_PERIOD;")
+
+df.PERSON <- renderTranslateQuerySql(connection, "SELECT * FROM main.PERSON;")
+
+df.PROCEDURE_OCCURRENCE <- renderTranslateQuerySql(connection, "SELECT * FROM main.PROCEDURE_OCCURRENCE;")
+
+df.PROVIDER <- renderTranslateQuerySql(connection, "SELECT * FROM main.PROVIDER;")
+
+df.RELATIONSHIP <- renderTranslateQuerySql(connection, "SELECT * FROM main.RELATIONSHIP;")
+
+df.SOURCE_TO_CONCEPT_MAP <- renderTranslateQuerySql(connection, "SELECT * FROM main.SOURCE_TO_CONCEPT_MAP;")
+
+df.SPECIMEN <- renderTranslateQuerySql(connection, "SELECT * FROM main.SPECIMEN;")
+
+df.VISIT_DETAIL <- renderTranslateQuerySql(connection, "SELECT * FROM main.VISIT_DETAIL;")
+df.VISIT_OCCURRENCE <- renderTranslateQuerySql(connection, "SELECT * FROM main.VISIT_OCCURRENCE;")
+
+df.VOCABULARY <- renderTranslateQuerySql(connection, "SELECT * FROM main.VOCABULARY;")
+
+
+```
+
+```{r explore_concepts}
+
+# Types
+df.CONCEPT %>% dplyr::select(DOMAIN_ID) %>% distinct
+df.CONCEPT %>% dplyr::select(VOCABULARY_ID) %>% distinct
+
+# Concept
+df.CONCEPT %>% 
+  group_by(DOMAIN_ID,VOCABULARY_ID,CONCEPT_CLASS_ID) %>% 
+  sample_n(1) %>% 
+  View
+
+# ICD
+df.CONCEPT %>% 
+  count(VOCABULARY_ID) %>% 
+  arrange(desc(n))
+
+df.CONCEPT %>% filter(VOCABULARY_ID=="LOINC") %>% View
+
+# Aggregate
+df.CONCEPT %>% 
+  count(DOMAIN_ID,VOCABULARY_ID,CONCEPT_CLASS_ID) %>% 
+  arrange(DOMAIN_ID,VOCABULARY_ID,CONCEPT_CLASS_ID,desc(n)) %>% 
+  View
+
+```
+
+```{r condition_bleeding}
+## GI - Blødning
+# Gastrointestinal blødning UNS - DK922 [P]
+
+# 35208414: ICD10M "Gastrointestinal hemorrhage, unspecified" - K92.2
+# 192671: SNOMED 74474003 "Gastrointestinal hemorrhage" - Gastrointestinal hemorrhage (disorder)
+# 1569708: ICD10M "Other diseases of digestive system" - K92
+
+# Direct relation between ICD and SNOMED for this:
+df.CONCEPT %>% filter(CONCEPT_ID %in% c(35208414,192671,1569708))
+df.CONCEPT_RELATIONSHIP %>% filter(CONCEPT_ID_1 %in% c(35208414,192671))
+
+# Ancestor relationship
+df.CONCEPT_ANCESTOR %>% 
+  dplyr::select(ANCESTOR_CONCEPT_ID,DESCENDANT_CONCEPT_ID) %>% 
+  left_join(df.CONCEPT %>% dplyr::select(CONCEPT_ID,CONCEPT_NAME),
+             by=c("ANCESTOR_CONCEPT_ID"="CONCEPT_ID")) %>% 
+  left_join(df.CONCEPT %>% dplyr::select(CONCEPT_ID,CONCEPT_NAME),
+             by=c("DESCENDANT_CONCEPT_ID"="CONCEPT_ID")) %>%
+  na.omit() %>% 
+  filter(!ANCESTOR_CONCEPT_ID==DESCENDANT_CONCEPT_ID) %>% 
+  View
+df.CONCEPT_ANCESTOR %>% filter(DESCENDANT_CONCEPT_ID %in% c(35208414,192671,1569708))
+# => 192671
+df.CONCEPT_ANCESTOR %>% 
+  filter(DESCENDANT_CONCEPT_ID %in% c(192671)) %>% 
+  inner_join(df.CONCEPT,by=c("ANCESTOR_CONCEPT_ID"="CONCEPT_ID")) # ? none
+
+
+df.CONCEPT_ANCESTOR %>% 
+  filter(ANCESTOR_CONCEPT_ID %in% c(44784217)) %>% 
+  inner_join(df.CONCEPT,by=c("DESCENDANT_CONCEPT_ID"="CONCEPT_ID")) %>% 
+  View
+df.CONCEPT_ANCESTOR %>% 
+  filter(DESCENDANT_CONCEPT_ID %in% c(44784217)) %>% 
+  inner_join(df.CONCEPT,by=c("ANCESTOR_CONCEPT_ID"="CONCEPT_ID")) %>% 
+  View
+
+
+```
+
+
+
+
+
+```{r }
+
+df.COHORT
+
+df.CONCEPT
+
+```
+
+```{r}
+
+# Cohort definition
+df.COHORT %>% 
+  filter(COHORT_DEFINITION_ID==1) %>% 
+  dplyr::select(SUBJECT_ID,COHORT_START_DATE)
+
+df.CONCEPT %>% 
+  filter(CONCEPT_NAME=="Alendronate")
+
+df.CONCEPT %>% 
+  filter(CONCEPT_NAME=="Pathological fracture due to osteoporosis")
+
+df.CONCEPT_SYNONYM %>% 
+  filter(CONCEPT_ID==40480160)
+
+df.CONDITION_OCCURRENCE %>% 
+  filter(CONDITION_CONCEPT_ID==40480160)
+
+```
+
+
+```{r}
+
+disconnect(connection)
+
+```
+
